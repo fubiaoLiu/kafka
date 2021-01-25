@@ -71,6 +71,11 @@ object ZkUtils {
   }
 
   def createZkClientAndConnection(zkUrl: String, sessionTimeout: Int, connectionTimeout: Int): (ZkClient, ZkConnection) = {
+    // 先创建一个connection对象，再创建client，
+    // 创建connection只是设置基本的连接参数，实际上会在创建client的时候完成连接的建立
+    // 初始化client时会调用connection的方法完成连接的建立
+    // connection底层会创建一个zookeeper对象，最终会在sendThread线程中通过Java NIO的方式完成连接的建立
+    // 底层还是基于SocketChannel、SelectionKey这些东西
     val zkConnection = new ZkConnection(zkUrl, sessionTimeout)
     val zkClient = new ZkClient(zkConnection, connectionTimeout, ZKStringSerializer)
     (zkClient, zkConnection)

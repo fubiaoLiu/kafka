@@ -159,15 +159,20 @@ object KafkaController extends Logging {
 class KafkaController(val config : KafkaConfig, zkUtils: ZkUtils, val brokerState: BrokerState, time: Time, metrics: Metrics, threadNamePrefix: Option[String] = None) extends Logging with KafkaMetricsGroup {
   this.logIdent = "[Controller " + config.brokerId + "]: "
   private var isRunning = true
+  // 状态机
   private val stateChangeLogger = KafkaController.stateChangeLogger
   val controllerContext = new ControllerContext(zkUtils, config.zkSessionTimeoutMs)
   val partitionStateMachine = new PartitionStateMachine(this)
   val replicaStateMachine = new ReplicaStateMachine(this)
+  // controller集群选举的组件
+  // 每个broker都会尝试在zk上创建"/controller"节点完成选举
   private val controllerElector = new ZookeeperLeaderElector(controllerContext, ZkUtils.ControllerPath, onControllerFailover,
     onControllerResignation, config.brokerId)
   // have a separate scheduler for the controller to be able to start and stop independently of the
   // kafka server
+  // 专门负责自动重平衡的调度器
   private val autoRebalanceScheduler = new KafkaScheduler(1)
+  // 用于删除topic的管理器
   var deleteTopicManager: TopicDeletionManager = null
   val offlinePartitionSelector = new OfflinePartitionLeaderSelector(controllerContext, config)
   private val reassignedPartitionLeaderSelector = new ReassignedPartitionLeaderSelector(controllerContext)
@@ -175,8 +180,10 @@ class KafkaController(val config : KafkaConfig, zkUtils: ZkUtils, val brokerStat
   private val controlledShutdownPartitionLeaderSelector = new ControlledShutdownLeaderSelector(controllerContext)
   private val brokerRequestBatch = new ControllerBrokerRequestBatch(this)
 
+  // 分区重分配监听器
   private val partitionReassignedListener = new PartitionsReassignedListener(this)
   private val preferredReplicaElectionListener = new PreferredReplicaElectionListener(this)
+  // ISR变更通知监听器
   private val isrChangeNotificationListener = new IsrChangeNotificationListener(this)
 
   newGauge(
@@ -307,6 +314,9 @@ class KafkaController(val config : KafkaConfig, zkUtils: ZkUtils, val brokerStat
   /**
    * This callback is invoked by the zookeeper leader elector on electing the current broker as the new controller.
    * It does the following things on the become-controller state change -
+    *
+    * 如果有人成为新的controller，就会调用这个方法
+    *
    * 1. Register controller epoch changed listener
    * 2. Increments the controller epoch
    * 3. Initializes the controller's context object that holds cache objects for current topics, live brokers and
@@ -314,8 +324,19 @@ class KafkaController(val config : KafkaConfig, zkUtils: ZkUtils, val brokerStat
    * 4. Starts the controller's channel manager
    * 5. Starts the replica state machine
    * 6. Starts the partition state machine
+    *
+    * ①、注册controller epoch变更监听器。
+    * ②、递增controller epoch。
+    * ③、初始化controller context上下文对象，并且缓存当前的topic数据、存活的broker数据和partition的leader数据。
+    * ④、启动controller channel管理器。
+    * ⑤、启动replica状态机。
+    * ⑥、启动partition状态机。
+    *
+    *
    * If it encounters any unexpected exception/error while becoming controller, it resigns as the current controller.
    * This ensures another controller election will be triggered and there will always be an actively serving controller
+    *
+    * 如果在成为controller的时候出现异常，就会退出controller，这样其他的broker就可以重新选举，保证至少有一个controller
    */
   def onControllerFailover() {
     if(isRunning) {
@@ -329,6 +350,7 @@ class KafkaController(val config : KafkaConfig, zkUtils: ZkUtils, val brokerStat
       registerIsrChangeNotificationListener()
       registerPreferredReplicaElectionListener()
       partitionStateMachine.registerListeners()
+      // 这里会对"/brokers/ids"目录注册监听器
       replicaStateMachine.registerListeners()
       initializeControllerContext()
       replicaStateMachine.startup()
@@ -679,8 +701,11 @@ class KafkaController(val config : KafkaConfig, zkUtils: ZkUtils, val brokerStat
   def startup() = {
     inLock(controllerContext.controllerLock) {
       info("Controller starting up")
+      // 注册session过期监听器
+      // 就是监听zk上的"broker.id"
       registerSessionExpirationListener()
       isRunning = true
+      // 进行controller选举
       controllerElector.startup
       info("Controller startup complete")
     }

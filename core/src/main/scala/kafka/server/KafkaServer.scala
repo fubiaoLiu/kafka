@@ -177,6 +177,7 @@ class KafkaServer(val config: KafkaConfig, time: Time = SystemTime, threadNamePr
         kafkaScheduler.startup()
 
         /* setup zookeeper */
+        // 初始化与zk通信的客户端组件
         zkUtils = initZk()
 
         /* start log manager */
@@ -201,6 +202,7 @@ class KafkaServer(val config: KafkaConfig, time: Time = SystemTime, threadNamePr
         replicaManager.startup()
 
         /* start kafka controller */
+        // 初始化启动KafkaController组件，用于管理集群的组件
         kafkaController = new KafkaController(config, zkUtils, brokerState, kafkaMetricsTime, metrics, threadNamePrefix)
         kafkaController.startup()
 
@@ -300,6 +302,7 @@ class KafkaServer(val config: KafkaConfig, time: Time = SystemTime, threadNamePr
                           config.zkSessionTimeoutMs,
                           config.zkConnectionTimeoutMs,
                           secureAclsEnabled)
+    // 这里会创建一些持久目录节点
     zkUtils.setupCommonPaths()
     zkUtils
   }
