@@ -141,6 +141,7 @@ class KafkaApis(val requestChannel: RequestChannel,
       val responseHeader = new ResponseHeader(correlationId)
       val leaderAndIsrResponse =
         if (authorize(request.session, ClusterAction, Resource.ClusterResource)) {
+          // 交给ReplicaManager处理，成为leader或follower要做什么事
           val result = replicaManager.becomeLeaderOrFollower(correlationId, leaderAndIsrRequest, metadataCache, onLeadershipChange)
           new LeaderAndIsrResponse(result.errorCode, result.responseMap.mapValues(new JShort(_)).asJava)
         } else {
@@ -433,6 +434,7 @@ class KafkaApis(val requestChannel: RequestChannel,
     // the callback for sending a fetch response
     def sendResponseCallback(responsePartitionData: Map[TopicAndPartition, FetchResponsePartitionData]) {
 
+      // 解析FetchResponsePartitionData
       val convertedPartitionData =
         // Need to down-convert message when consumer only takes magic value 0.
         if (fetchRequest.versionId <= 1) {
@@ -467,6 +469,8 @@ class KafkaApis(val requestChannel: RequestChannel,
         BrokerTopicStats.getBrokerAllTopicsStats().bytesOutRate.mark(data.messages.sizeInBytes)
       }
 
+      // 最后将响应封装到FetchResponse再封装到RequestChannel.Response
+      // 最后放入响应队列
       def fetchResponseCallback(delayTimeMs: Int) {
         trace(s"Sending fetch response to client ${fetchRequest.clientId} of " +
           s"${convertedPartitionData.values.map(_.messages.sizeInBytes).sum} bytes")
@@ -479,6 +483,8 @@ class KafkaApis(val requestChannel: RequestChannel,
       request.apiRemoteCompleteTimeMs = SystemTime.milliseconds
 
       // Do not throttle replication traffic
+      // 如果是follower同步数据，不限制复制流量
+      // 否则，记录限制指标，超过限制则延迟响应
       if (fetchRequest.isFromFollower) {
         fetchResponseCallback(0)
       } else {
@@ -493,6 +499,7 @@ class KafkaApis(val requestChannel: RequestChannel,
       sendResponseCallback(Map.empty)
     else {
       // call the replica manager to fetch messages from the local replica
+      // 从本地副本获取消息
       replicaManager.fetchMessages(
         fetchRequest.maxWait.toLong,
         fetchRequest.replicaId,
@@ -724,6 +731,7 @@ class KafkaApis(val requestChannel: RequestChannel,
       if (authorizedTopics.isEmpty)
         Seq.empty[MetadataResponse.TopicMetadata]
       else
+        // 获取topic对应元数据返回，所以是其他人从这里拉取元数据
         getTopicMetadata(authorizedTopics, request.securityProtocol, errorUnavailableEndpoints)
 
     val completeTopicMetadata = topicMetadata ++ unauthorizedTopicMetadata

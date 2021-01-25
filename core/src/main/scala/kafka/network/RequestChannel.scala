@@ -178,7 +178,9 @@ object RequestChannel extends Logging {
 
 class RequestChannel(val numProcessors: Int, val queueSize: Int) extends KafkaMetricsGroup {
   private var responseListeners: List[(Int) => Unit] = Nil
+  // 请求队列，所有请求都会放入这个队列，队列用的是ArrayBlockingQueue
   private val requestQueue = new ArrayBlockingQueue[RequestChannel.Request](queueSize)
+  // 响应队列，每个processor线程都有一个响应队列，队列用的是LinkedBlockingQueue
   private val responseQueues = new Array[BlockingQueue[RequestChannel.Response]](numProcessors)
   for(i <- 0 until numProcessors)
     responseQueues(i) = new LinkedBlockingQueue[RequestChannel.Response]()

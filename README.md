@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 Apache Kafka
 =================
 See our [web site](http://kafka.apache.org) for details on the project.
@@ -150,7 +149,3 @@ Apache Kafka is interested in building the community; we would welcome any thoug
 
 To contribute follow the instructions here:
  * http://kafka.apache.org/contributing.html
-=======
-# kafka
-Kafka0.10.0.1源码，包含个人理解的注释
->>>>>>> 0fff62b... Initial commit

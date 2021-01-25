@@ -187,6 +187,11 @@ class KafkaServer(val config: KafkaConfig, time: Time = SystemTime, threadNamePr
         config.brokerId =  getBrokerId
         this.logIdent = "[Kafka Server " + config.brokerId + "], "
 
+        // 网络通信组件
+        // 就是根据配置，创建acceptor线程，然后给每个acceptor线程创建指定数量的processor线程
+        // 最后，底层通过Java NIO的创建ServerSocketChannel组件并注册到Selector中，监听某个端口
+        // 如果有客户端发送建立连接的请求，acceptor组件就会通过轮循方式将请求交给其中一个processor处理
+        // 建立连接后，processor就会将连接对应的SocketChannel放入连接队列（ConcurrentLinkedQueue）
         socketServer = new SocketServer(config, metrics, kafkaMetricsTime)
         socketServer.startup()
 

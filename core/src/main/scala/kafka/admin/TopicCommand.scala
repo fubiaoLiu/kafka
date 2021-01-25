@@ -58,6 +58,7 @@ object TopicCommand extends Logging {
     var exitCode = 0
     try {
       if(opts.options.has(opts.createOpt))
+        // 通过命令行工具，创建topic会走到这里
         createTopic(zkUtils, opts)
       else if(opts.options.has(opts.alterOpt))
         alterTopic(zkUtils, opts)
@@ -96,17 +97,22 @@ object TopicCommand extends Logging {
     if (Topic.hasCollisionChars(topic))
       println("WARNING: Due to limitations in metric names, topics with a period ('.') or underscore ('_') could collide. To avoid issues it is best to use either, but not both.")
     try {
+      // 如果指定了副本分配方案，会走这里
       if (opts.options.has(opts.replicaAssignmentOpt)) {
         val assignment = parseReplicaAssignment(opts.options.valueOf(opts.replicaAssignmentOpt))
         warnOnMaxMessagesChange(configs, assignment.valuesIterator.next().length)
         AdminUtils.createOrUpdateTopicPartitionAssignmentPathInZK(zkUtils, topic, assignment, configs, update = false)
       } else {
+        // 默认就会走这个分支
         CommandLineUtils.checkRequiredArgs(opts.parser, opts.options, opts.partitionsOpt, opts.replicationFactorOpt)
+        // 获取分区数和副本数
         val partitions = opts.options.valueOf(opts.partitionsOpt).intValue
         val replicas = opts.options.valueOf(opts.replicationFactorOpt).intValue
         warnOnMaxMessagesChange(configs, replicas)
+        // 机架感知
         val rackAwareMode = if (opts.options.has(opts.disableRackAware)) RackAwareMode.Disabled
                             else RackAwareMode.Enforced
+        // 通过zkUtils直接到zk上创建对应的znode，controller就会感知到，然后把topic数据同步给其他broker
         AdminUtils.createTopic(zkUtils, topic, partitions, replicas, configs, rackAwareMode)
       }
       println("Created topic \"%s\".".format(topic))

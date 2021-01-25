@@ -529,6 +529,7 @@ class Log(val dir: File,
           entry.getValue.size
         }
       }
+      // 这里会通过LogSegment来读取
       val fetchInfo = entry.getValue.read(startOffset, maxOffset, maxLength, maxPosition)
       if(fetchInfo == null) {
         entry = segments.higherEntry(entry.getKey)

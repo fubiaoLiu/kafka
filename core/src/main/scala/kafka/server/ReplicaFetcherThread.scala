@@ -122,6 +122,7 @@ class ReplicaFetcherThread(name: String,
       if (logger.isTraceEnabled)
         trace("Follower %d has replica log end offset %d for partition %s. Received %d messages and leader hw %d"
           .format(replica.brokerId, replica.logEndOffset.messageOffset, topicAndPartition, messageSet.sizeInBytes, partitionData.highWatermark))
+      // 将数据写入本地的log文件，已经更新LEO
       replica.log.get.append(messageSet, assignOffsets = false)
       if (logger.isTraceEnabled)
         trace("Follower %d has replica log end offset %d after appending %d bytes of messages for partition %s"
@@ -130,6 +131,7 @@ class ReplicaFetcherThread(name: String,
       // for the follower replica, we do not need to keep
       // its segment base offset the physical position,
       // these values will be computed upon making the leader
+      // 更新本地的HW，取本地LEO和leader HW的最小值
       replica.highWatermark = new LogOffsetMetadata(followerHighWatermark)
       if (logger.isTraceEnabled)
         trace("Follower %d set replica high watermark for partition [%s,%d] to %s"
@@ -234,11 +236,18 @@ class ReplicaFetcherThread(name: String,
 
   private def sendRequest(apiKey: ApiKeys, apiVersion: Option[Short], request: AbstractRequest): ClientResponse = {
     import kafka.utils.NetworkClientBlockingOps._
+    // 设置为FETCH请求
     val header = apiVersion.fold(networkClient.nextRequestHeader(apiKey))(networkClient.nextRequestHeader(apiKey, _))
     try {
+      // 阻塞等待与leader broker建立连接，超时则抛出SocketTimeoutException异常
       if (!networkClient.blockingReady(sourceNode, socketTimeout)(time))
         throw new SocketTimeoutException(s"Failed to connect within $socketTimeout ms")
       else {
+        // 连接已建立，构造请求，然后通过NetworkClient发送出去，并且阻塞等待获取响应
+        // 这里其实就是走的和Produce端一样的代码，封装了一套共用的网络通信组件
+        // 这里会将请求放入对应的KafkaChannel中，底层的SocketChannel监听OP_WRITE事件，
+        // 然后阻塞再这里，不停的去获取响应
+        // 最终请求会在执行poll方法时处理
         val send = new RequestSend(sourceBroker.id.toString, header, request.toStruct)
         val clientRequest = new ClientRequest(time.milliseconds(), true, send, null)
         networkClient.blockingSendAndReceive(clientRequest)(time)
@@ -268,6 +277,7 @@ class ReplicaFetcherThread(name: String,
   }
 
   protected def buildFetchRequest(partitionMap: Map[TopicAndPartition, PartitionFetchState]): FetchRequest = {
+    // PartitionData封装了该partition replica当前的offset，和最大拉取的数据大小（默认是1M）
     val requestMap = mutable.Map.empty[TopicPartition, JFetchRequest.PartitionData]
 
     partitionMap.foreach { case ((TopicAndPartition(topic, partition), partitionFetchState)) =>

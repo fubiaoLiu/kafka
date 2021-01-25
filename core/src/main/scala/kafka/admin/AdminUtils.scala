@@ -399,8 +399,14 @@ object AdminUtils extends Logging {
                   replicationFactor: Int,
                   topicConfig: Properties = new Properties,
                   rackAwareMode: RackAwareMode = RackAwareMode.Enforced) {
+    // 从zk上获取broker元数据，其实就是获取"/brokers/ids"目录下的节点
     val brokerMetadatas = getBrokerMetadatas(zkUtils, rackAwareMode)
+    // 通过算法获取分区分配方案，算法会尽量保证以下情况：
+    // 1、尽可能保证broker上的副本平衡
+    // 2、同一个分区的两个副本不会在一台机器上
+    // 3、根据机架信息，尽可能将一个partition的不同分区放入不同的机架
     val replicaAssignment = AdminUtils.assignReplicasToBrokers(brokerMetadatas, partitions, replicationFactor)
+    // 在zk上创建topic节点，就是在"/brokers/topics"目录下创建对应的znode
     AdminUtils.createOrUpdateTopicPartitionAssignmentPathInZK(zkUtils, topic, replicaAssignment, topicConfig)
   }
 
